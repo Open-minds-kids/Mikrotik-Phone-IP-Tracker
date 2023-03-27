@@ -7,7 +7,7 @@ phone_number_regex = re.compile(r'\b0\d{9}\b')
 ip_address_regex = re.compile(r'\((\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})\)')
 
 # Initialize the list of online IP addresses
-online_ips = []
+online_ips = {}
 
 async def check_log_file():
     while True:
@@ -43,44 +43,47 @@ async def check_log_file():
         online_phones = []
         tasks = []
         for phone, ip_address in phone_ip_dict.items():
+            if ip_address in online_ips and online_ips[ip_address] > 0:
+                online_phones.append(phone)
+                online_ips[ip_address] -= 1
+                continue
+
             tasks.append(asyncio.create_task(ping_ip_address(phone, ip_address)))
 
         results = await asyncio.gather(*tasks)
         for phone, online in results:
             if online:
                 online_phones.append(phone)
+                online_ips[ip_address] = 2
             else:
                 # If the IP address is unreachable, remove it from the online IPs list
                 if ip_address in online_ips:
-                    online_ips.remove(ip_address)
+                    del online_ips[ip_address]
 
         # Print out any new online IP addresses
-        new_online_ips = list(set(phone_ip_dict.values()) & set(ip_addresses) - set(online_ips))
+        new_online_ips = list(set(phone_ip_dict.values()) & set(ip_addresses) - set(online_ips.keys()))
         if new_online_ips and '192.168.1.25' not in new_online_ips:
             print('New online IP addresses:', new_online_ips)
 
             # Update the list of online IP addresses
-            online_ips.extend(new_online_ips)
+            online_ips.update({ip: 2 for ip in new_online_ips})
 
             # Print out the list of online phone numbers
             print('Online phone numbers:', online_phones)
 
-        await asyncio.sleep(5)
+        await asyncio.sleep(3)
 
 async def ping_ip_address(phone, ip_address):
-    ping_process = await asyncio.create_subprocess_exec('ping', '-c', '1', ip_address, stdout=asyncio.subprocess.PIPE)
-    stdout, _ = await ping_process.communicate()
-    online = ping_process.returncode == 0
-    return phone, online
+    for i in range(3):
+        ping_process = await asyncio.create_subprocess_exec('ping', '-c', '1', ip_address, stdout=asyncio.subprocess.PIPE)
+        stdout, _ = await ping_process.communicate()
+        online = ping_process.returncode == 0
+        if online:
+            return phone, True
+
+    return phone, False
 
 async def check_internet_connection():
     while True:
-        ping_process = await asyncio.create_subprocess_exec('ping', '-c', '1', '8.8.8.8', stdout=asyncio.subprocess.PIPE)
-        stdout, _ = await ping_process.communicate()
-        if ping_process.returncode == 0:
-            print('Internet is up')
-        else:
-            print('Internet is down')
-
-        await asyncio.sleep(5)
+        ping_process = await asyncio.create
 
